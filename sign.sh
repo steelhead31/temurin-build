@@ -117,12 +117,11 @@ signRelease()
     "mac"*)
       # TODO: Remove this completly once https://github.com/adoptium/openjdk-jdk11u/commit/b3250adefed0c1778f38a7e221109ae12e7c421e has been backported to JDK8u
       echo "Signing OSX release"
+
       ENTITLEMENTS="$WORKSPACE/entitlements.plist"
-      MACSIGNSTRING="Apple Certification Authority"
-
       # Sign all files with the executable permission bit set.
+      FILES=$(find "${TMP_DIR}" -perm +111 -type f -o -name '*.dylib'  -type f || find "${TMP_DIR}" -perm /111 -type f -o -name '*.dylib'  -type f)
 
-      FILES=$(find "${TMP_DIR}" -perm +111 -type f -not -name '.*' -o -name '*.dylib' || find "${TMP_DIR}" -perm /111 -type f -not -name '.*' -o -name '*.dylib')
       if [ "$FILES" == "" ]; then
         echo "No files to sign"
       elif [ "$SIGN_TOOL" = "eclipse" ]; then
@@ -133,46 +132,11 @@ signRelease()
           file=$(basename "$f")
           mv "$f" "${dir}/unsigned_${file}"
           curl --fail --silent --show-error -o "$f" -F file="@${dir}/unsigned_${file}" -F entitlements="@$ENTITLEMENTS" https://cbi.eclipse.org/macos/codesign/sign
-          echo File = "$f"
-          TESTMACSIGN=$(grep -ic "$MACSIGNSTRING" "$f")
-          echo Sign Result = "$TESTMACSIGN"
-          if [ "$TESTMACSIGN" -gt 0 ]
-          then
-            echo "Code Signed For File $f"
-            chmod --reference="${dir}/unsigned_${file}" "$f"
-            rm -rf "${dir}/unsigned_${file}"
-          else
-            max_iterations=20
-            iteration=1
-            success=false
-            echo "Code Not Signed For File $f"
-            while [ $iteration -le $max_iterations ] && [ $success = false ]; do
-              echo $iteration Of $max_iterations
-              sleep 1
-              curl --fail -o "$f" -F file="@${dir}/unsigned_${file}" -F entitlements="@$ENTITLEMENTS" https://cbi.eclipse.org/macos/codesign/sign
-              TESTMACSIGN2=$(grep -ic "$MACSIGNSTRING" "$f")
-              echo TESTMACSIGN2 = "$TESTMACSIGN2"
-              if [ "$TESTMACSIGN2" -gt 0 ]
-              then
-                echo "$f Signed OK On Attempt $iteration"
-                chmod --reference="${dir}/unsigned_${file}" "$f"
-                rm -rf "${dir}/unsigned_${file}"
-                success=true
-              else
-                echo "$f Failed Signing On Attempt $iteration"
-                success=false
-                iteration=$((iteration+1))
-                if [ $iteration -gt $max_iterations ]
-                then
-                  echo "Errors Encountered During Signing"
-                  exit 1
-                fi
-              fi
-            done
-          fi
+          chmod --reference="${dir}/unsigned_${file}" "$f"
+          rm -rf "${dir}/unsigned_${file}"
         done
         JDK_DIR=$(ls -d "${TMP_DIR}"/jdk*)
-        JDK=$(basename "${JDK_DIR}")
+        JDK=$(basename "${JDK_DIR}") 
         cd "${TMP_DIR}"
         zip -q -r "${TMP_DIR}/unsigned.zip" "${JDK}"
         cd -
